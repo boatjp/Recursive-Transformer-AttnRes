@@ -1,6 +1,6 @@
 # Japanese FineWiki SentencePiece Tokenizer
 
-`HuggingFaceFW/finewiki` の日本語サブセットをストリーミングで取得し、日本語10,000,000語のTrainコーパスと SentencePiece Unigram Tokenizer を作成します。Transformerモデルや事前学習コードは含みません。
+`HuggingFaceFW/finewiki` の日本語サブセットをストリーミングで取得し、日本語10,000,000語のTrainコーパスと SentencePiece Unigram Tokenizer を作成します。
 
 ## 設計
 
@@ -21,7 +21,7 @@ FineWikiの本文には見出し、表、リスト等のMarkdown風表現が含�
 
 Python 3.11を推奨します。
 
-```powershell
+```bash
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
@@ -29,9 +29,9 @@ python -m pip install -r requirements.txt
 
 Hugging Face Hubへアクセスできるネットワーク環境が必要です。認証が必要な環境では事前に `HF_TOKEN` を設定してください。
 
-## まず小規模動作確認
+## 小規模動作確認
 
-```powershell
+```bash
 python tokenizer_pipeline.py --mode smoke --output-dir output-smoke
 ```
 
