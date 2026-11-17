@@ -1,6 +1,6 @@
 # Recursive Transformer + Full AttnRes
 
-日本語Causal Language Modelの通常Residual版とFull AttnRes版を比較するためのPyTorch実装です。モデル、データローダー、学習、評価、テキスト生成と各ユニットテストを含みます。本番の事前学習はまだ実行していません。既存Tokenizerの作成手順は `tokenizer/README.md` を参照してください。
+日本語Causal Language Modelの通常Residual版とFull AttnRes版を比較するためのPyTorch実装です。モデル、データローダー、学習、評価、テキスト生成と各ユニットテストを含みます。既存Tokenizerの作成手順は `tokenizer/README.md` を参照してください。
 
 ## データローダー
 
@@ -25,28 +25,24 @@ result = model(**batch)
 
 キャッシュはサイズ・ナノ秒更新時刻を使って元TXTとTokenizerの変更を検出し、トークン化方式・BOS/EOS設定の変更も検出します。同じサイズ・更新時刻を人為的に維持した変更は検出できません。`dataset_statistics` は語彙数、splitごとのトークン数・サンプル数・余剰数・キャッシュパス、系列長、seedを返します。データ用テストは小さな人工TXTを使用します。
 
-行単位方式へ変更後、実データのTrain・Validation・Testキャッシュを再生成し、既存の `tokenizer_stats.json` とトークン数が完全一致することを確認しました。順に7,898,067、420,061、423,619トークンです。
-
 ## 学習環境
 
 `train.py` は `configs/train.json` を読み、AdamW、更新単位のLinear Warmup＋Cosine Decay、トークン数で重み付けした勾配蓄積、Global Norm Clipping、Validation、JSONLログ、`last.pt`・`best.pt` を提供します。既定設定は系列長512、micro batch 4、8回蓄積、10 epoch、seed 42、学習率3e-4、bf16です。対応CUDA GPUがない場合はfp32へ切り替わります。bf16はGradScalerを使いません。Test splitは学習中のモデル選択に使いません。`tokens_per_second` は各Optimizer更新の学習処理のみを計測し、Validation・Checkpoint保存時間は含みません。CUDAでは更新前後に同期し、各更新前にPeakメモリ統計をリセットして `gpu_peak_memory_bytes` を記録します。CPUではこの値は0です。
 
-本番学習を実行する際は、設定値・利用可能メモリ・出力先を確認してから、以下のコマンドを使います。今回の作業では実行していません。
-
-```powershell
+本番学習を実行する際は、設定値・利用可能メモリ・出力先を確認してから、以下のコマンドを使います。
+```bash
 .venv\Scripts\python.exe train.py --config configs/train.json
 .venv\Scripts\python.exe train.py --config configs/train.json --resume runs/recursive-ja-residual/last.pt
 ```
 
-AttnResの比較実験には設定ファイルをコピーし、`residual_type` を `"attnres"`、`experiment_name` と `output_dir` を別名に変更します。その他の条件は揃えます。再開時は同じ設定ファイルと同じデータキャッシュを使います。Checkpointにはモデル・Optimizer・Scheduler・epoch・更新数・次のバッチ位置・乱数状態・データ識別情報を保存します。更新境界で一時ファイルから置換するため、途中再開時はepoch内のシャッフル順も再現できます。Checkpointは信頼できる自分のファイルだけを読み込んでください。
-
-`tests/test_train.py` は小型モデルと人工データで学習、検証、再開後のパラメータ・学習率一致を確認します。実際の`data.py`を通す1更新も小さな人工TXTで確認します。本番の10M語学習は行いません。
+AttnResの比較実験には設定ファイルをコピーし、`residual_type` を `"attnres"`、`experiment_name` と `output_dir` を別名に変更します。その他の条件は揃えます。再開時は同じ設定ファイルと同じデータキャッシュを使います。Checkpointにはモデル・Optimizer・Scheduler・epoch・更新数・次のバッチ位置・乱数状態・データ識別情報を保存します。更新境界で一時ファイルから置換するため、途中再開時はepoch内のシャッフル順も再現できます。
+`tests/test_train.py` は小型モデルと人工データで学習、検証、再開後のパラメータ・学習率一致を確認します。実際の`data.py`を通す1更新も小さな人工TXTで確認します。
 
 ## Checkpoint評価と生成
 
 学習済みCheckpointがある場合、`evaluate.py` は保存されたモデル設定とTokenizer・Testデータの識別情報を照合し、`train.py` の評価関数でTestのCross-Entropy LossとPerplexityを計算します。結果はコンソールとJSONへ出力します。既定のCheckpointは `runs/recursive-ja-residual/best.pt`、既定のJSON保存先はCheckpointと同じフォルダの `test_evaluation.json` です。Testは学習中のモデル選択に使用しません。
 
-```powershell
+```bash
 .venv\Scripts\python.exe evaluate.py --checkpoint runs/recursive-ja-residual/best.pt --batch-size 4 --output runs/recursive-ja-residual/test_evaluation.json
 .venv\Scripts\python.exe generate.py --checkpoint runs/recursive-ja-residual/best.pt --prompt "日本語の文章" --max-new-tokens 256 --seed 42
 .venv\Scripts\python.exe generate.py --checkpoint runs/recursive-ja-residual/best.pt --prompt "日本語の文章" --greedy --no-cache
@@ -54,13 +50,11 @@ AttnResの比較実験には設定ファイルをコピーし、`residual_type` 
 
 `generate.py` は保存された設定で両Residual方式を復元し、SentencePieceでプロンプトをエンコード・結果をデコードします。既定ではSamplingを使い、Temperature 0.8、Top-k 50、Top-p 0.95、Repetition penalty 1.0です。各値は同名のCLIオプションで変更でき、`--greedy` で決定的な最大logit選択に切り替えます。EOSが出たら停止します。生成中は全トークンを保持し、512トークンで自動切り捨てしません。ただし学習時の系列長を超えた出力品質は保証されず、長い文脈では計算量・メモリ使用量が増えます。
 
-KV CacheはOFFです。`--use-cache` は再帰ステップ間のKVを混同しない正確な実装が未完成のため、明確な未対応エラーを返します。`--no-cache` は明示的なOFF指定です。生成・評価ともに信頼できるCheckpointだけを読み込んでください。`tests/test_inference.py` は小型モデルと人工データでCheckpoint復元、両方式の評価・生成、Sampling、EOS、長い文脈、CLIを検証します。本番学習や本番Checkpointの評価は今回実行していません。
+KV CacheはOFFです。`--use-cache` は再帰ステップ間のKVを混同しない正確な実装が未完成のため、明確な未対応エラーを返します。`--no-cache` は明示的なOFF指定です。生成・評価ともに信頼できるCheckpointだけを読み込んでください。`tests/test_inference.py` は小型モデルと人工データでCheckpoint復元、両方式の評価・生成、Sampling、EOS、長い文脈、CLIを検証します。
 
-## セットアップと検証
+## セットアップ
 
-Python 3.13、PyTorch 2.15.0+cpu、SentencePiece 0.2.1で検証済みです。
-
-```powershell
+```bash
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 .venv\Scripts\python.exe recursive_transformer.py
@@ -117,17 +111,11 @@ input[b,t] = sum_d(weights[b,t,d] * history[b,t,d])
 
 深さAttentionに `1/sqrt(hidden)` は掛けません。KeyだけパラメータなしRMSNormを適用し、Valueは未正規化の履歴です。履歴はdetachせず、トークン間・バッチ間を混合しません。32個のサブレイヤー入力Queryと1個の最終Readout専用Queryは独立した学習パラメータで、`queries.shape == (33,640)` です。
 
-最終FFNまで含む33要素の履歴も集約し、その後Final RMSNormとLM Headへ渡します。**最終Readoutは最後のFFN入力Queryとは独立した専用Queryを使用します。** `queries[0:32]` がサブレイヤー入力用、`queries[32]`（`queries[-1]`）がReadout用です。当初の32 Query構成から専用Queryを追加したため、合計33個・21,120パラメータとなり、640パラメータ増えました。一般には `2 * num_steps + 1` 個です。`return_details=True` の `depth_weights` は32回の入力集約と最終Readoutの計33 Tensorで、各形状は `[batch, sequence, history_depth]` です。
+最終FFNまで含む33要素の履歴も集約し、その後Final RMSNormとLM Headへ渡します。`queries[0:32]` がサブレイヤー入力用、`queries[32]`（`queries[-1]`）がReadout用です。当初の32 Query構成から専用Queryを追加したため、合計33個・21,120パラメータとなり、640パラメータ増えました。一般には `2 * num_steps + 1` 個です。`return_details=True` の `depth_weights` は32回の入力集約と最終Readoutの計33 Tensorで、各形状は `[batch, sequence, history_depth]` です。
 
 最初のAttention入力は候補がEmbeddingのみなので、そのQueryの勾配は数学的に常にゼロです。独立Query数を守るため、このベクトルも保持します。Queryをゼロ初期化するため初期状態は深さ方向の均等重みですが、学習後はトークン内容に応じた重みになり得ます。
 
-## 初期化と論文との差異
-
-Embedding・Linearは平均0、標準偏差0.02の正規分布、Padding行は0、Norm scaleは1、Norm biasとAttnRes Queryは0です。Attention OとFFN downの標準偏差は `0.02 / sqrt(2 * num_steps)` に縮小します。ベース論文Appendix BのO/downゼロ初期化とは異なります。両比較モデルで同じ初期化方式を使い、最初のBackwardから内部projectionへの勾配経路を検証します。`set_seed` はPythonとPyTorchのCPU/CUDA seedを設定しますが、異なるデバイス・PyTorch版間のビット単位一致を保証するものではありません。
-
-ベース論文の英語BPE（32,768語彙）を既存の日本語SentencePiece（16,384語彙）へ置換し、FlashAttentionの可変長packed処理を通常のSDPA＋Padding/Causalマスクへ置換しています。Recursive共有ブロックとAttnResの組み合わせ、パラメータなしのAttnRes Key Normは今回の比較設計です。当初の32 Query指定に対しては、最終Readout用に1個を追加する設計へ変更しています。
-
-## 正確なパラメータ数
+## パラメータ数
 
 16,384語彙・既定サイズで、`parameter_counts()` が実際のParameterから重複なく集計します。
 
@@ -141,15 +129,3 @@ Embedding・Linearは平均0、標準偏差0.02の正規分布、Padding行は0�
 | Final RMSNorm | 640 | 640 |
 | AttnRes Query（Readout専用Query含む） | 0 | 21,120 |
 | **合計** | **21,332,864** | **21,353,984** |
-
-目安の約21.37Mとの差は構造を変更して埋めず、上記のNorm・bias・Gate・Readoutの仕様で報告します。
-
-## テスト対象
-
-`tests/test_recursive_transformer.py` は、形状、正確なパラメータ数、全ステップの共有モジュール呼び出し、Norm/bias/QK-Normの独立性、Query数・形状、Depth Softmaxの和、数値例との一致、トークンごとの重み変化、トークン分離、未来情報漏洩防止、fp32/bf16のForward/BackwardとNaN/Inf、最終FFNのlogitsへの影響と履歴の勾配、Embedding/Head非共有、左右/全Padding、lossシフト・無視ラベル、seed再現性、実Tokenizerのメタデータを検査します。通常Residualが混入していないことも、ゼロQuery時の全履歴平均との一致で確認します。
-
-詳細テストは小型Configを使い、さらに実Tokenizer＋指定どおりの640次元・16ステップ構成で両方式のForward/Backwardを実行します。最適化ステップや事前学習は行いません。
-
-2026-11-01の検証結果はモデル16テスト成功（5.613秒）、既存Tokenizer 8テスト成功（0.230秒）です。指定サイズの両モデルでfp32のForward/Backward、小型の両モデルでネイティブbf16とCPU autocastのForward/Backwardを確認しました。モデル情報表示コマンドも成功しています。SentencePiece由来のSWIG DeprecationWarningは出ますが、テスト失敗はありません。
-
-2026-11-03にReadout専用Queryを追加した構成でモデル17テストが成功しました（8.445秒）。Query数・パラメータ数の期待値を更新し、最終Readoutだけが専用Queryを使うことと、そのQueryへ勾配が流れることを検証しています。
